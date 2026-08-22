@@ -15,6 +15,7 @@ DEFAULT_CONFIDENCE_THRESHOLD = 0.35
 DEFAULT_CLASS_FILTER = (0, 2, 3, 5, 7)
 DEFAULT_VIDEO_SOURCE = "0"
 DEFAULT_FRAME_LOG_INTERVAL = 30
+DEFAULT_TRACKER_TYPE = "bytetrack.yaml"
 
 WINDOW_NAME = "IBVAP Detection"
 EXIT_KEY = "q"
@@ -55,6 +56,7 @@ class Settings:
     class_filter: tuple[int, ...]
     video_source: str
     frame_log_interval: int
+    tracker_type: str
 
 
 def get_settings() -> Settings:
@@ -76,4 +78,5 @@ def get_settings() -> Settings:
         frame_log_interval=int(
             os.getenv("IBVAP_FRAME_LOG_INTERVAL", str(DEFAULT_FRAME_LOG_INTERVAL))
         ),
+        tracker_type=os.getenv("IBVAP_TRACKER_TYPE", DEFAULT_TRACKER_TYPE),
     )

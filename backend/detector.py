@@ -1,4 +1,4 @@
-"""YOLOv8 detection pipeline for IBVAP Phase 1."""
+"""YOLOv8 detection and tracking pipeline for IBVAP Phase 2."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ if __package__ is None or __package__ == "":
 
 from backend import config
 from backend.config import Settings, get_settings
-from backend.utils.annotation import draw_detections
+from backend.utils.annotation import draw_detections, get_track_id
 from backend.utils.video_source import open_video_source
 
 logging.basicConfig(
@@ -29,7 +29,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class Detector:
-    """YOLO-backed detector for people and vehicle classes."""
+    """YOLO-backed detector and tracker for people and vehicle classes."""
 
     def __init__(self, settings: Settings) -> None:
         """Create a detector with config-driven runtime settings."""
@@ -38,6 +38,7 @@ class Detector:
         self.capture: VideoCapture | None = None
         self.frame_count = 0
         self.fps_started_at = time.perf_counter()
+        self.seen_track_ids: set[int] = set()
 
     def load_model(self) -> YOLO:
         """Load the configured YOLO model."""
@@ -63,21 +64,37 @@ class Detector:
         return frame
 
     def run_inference(self, frame: np.ndarray) -> Any:
-        """Run YOLO inference for configured COCO class ids."""
+        """Run YOLO tracking for configured COCO class ids."""
         if self.model is None:
             raise RuntimeError("Model is not loaded")
 
-        results = self.model(
+        results = self.model.track(
             frame,
+            persist=True,
             conf=self.settings.confidence_threshold,
             classes=list(self.settings.class_filter),
+            tracker=self.settings.tracker_type,
             verbose=False,
         )
         return results[0]
 
     def annotate_frame(self, frame: np.ndarray, result: Any) -> np.ndarray:
-        """Draw bounding boxes, labels, and confidence scores on a frame."""
+        """Draw bounding boxes, track IDs, labels, and confidence scores."""
         return draw_detections(frame, result)
+
+    def log_new_tracks(self, result: Any) -> None:
+        """Log each track ID the first time it appears."""
+        if result.boxes is None:
+            return
+
+        for box in result.boxes:
+            track_id = get_track_id(box)
+            if track_id is None or track_id in self.seen_track_ids:
+                continue
+
+            class_id = int(box.cls[0])
+            LOGGER.info("New track: %s #%s", result.names[class_id], track_id)
+            self.seen_track_ids.add(track_id)
 
     def log_fps(self) -> None:
         """Log average FPS every configured frame interval."""
@@ -102,6 +119,7 @@ class Detector:
                     break
 
                 result = self.run_inference(frame)
+                self.log_new_tracks(result)
                 annotated = self.annotate_frame(frame, result)
                 cv2.imshow(config.WINDOW_NAME, annotated)
                 self.log_fps()

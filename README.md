@@ -1,7 +1,8 @@
 # IBVAP - Intelligent Border Video Analytics Platform
 
-Phase 0 + Phase 1 prototype for the IBVAP perception layer. This stage runs
-YOLOv8 detection on a webcam or video file and annotates people and vehicles.
+Phase 0 through Phase 2 prototype for the IBVAP perception layer. This stage
+runs YOLOv8 tracking on a webcam or video file and annotates people and vehicles
+with persistent track IDs.
 
 ## Setup
 
@@ -45,14 +46,21 @@ Sample video:
 IBVAP_VIDEO_SOURCE=sample_data/my_test_video.mp4
 ```
 
+Tracker type:
+
+```dotenv
+IBVAP_TRACKER_TYPE=bytetrack.yaml
+```
+
 ## Run
 
 ```powershell
 python backend/detector.py
 ```
 
-The OpenCV window should show live detections for people, cars, motorcycles,
-buses, and trucks. Press `q` while the window is focused to exit.
+The OpenCV window should show live tracked detections for people, cars,
+motorcycles, buses, and trucks. Labels include persistent track IDs, such as
+`person #4  0.87`. Press `q` while the window is focused to exit.
 
 If `py -3.12` is unavailable, install Python 3.12 or 3.11, recreate the venv,
 and run the install command again.
