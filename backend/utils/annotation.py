@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from backend import config
+from backend.events import Fence
 
 
 def draw_detections(frame: np.ndarray, result: Any) -> np.ndarray:
@@ -31,6 +32,14 @@ def draw_detections(frame: np.ndarray, result: Any) -> np.ndarray:
         )
         draw_label(frame, label, x1, y1)
 
+    return frame
+
+
+def draw_fence(frame: np.ndarray, fence: Fence) -> np.ndarray:
+    """Draw the virtual fence line on a frame."""
+    start = (int(fence.start[0]), int(fence.start[1]))
+    end = (int(fence.end[0]), int(fence.end[1]))
+    cv2.line(frame, start, end, config.FENCE_COLOR, config.FENCE_THICKNESS)
     return frame
 
 

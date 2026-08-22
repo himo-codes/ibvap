@@ -95,5 +95,53 @@ You can swap this later to another Ultralytics tracker YAML without changing cod
 
 ### Next
 
-- Stop here until Phase 2 is confirmed.
 - Phase 3 should consume stable track IDs for virtual-fence/event logic rather than implementing tracking again.
+
+## Section 5 - Phase 3 Virtual Fence Handoff
+
+### Done
+
+- Added `backend/events.py` with a YOLO/OpenCV-independent `Fence`, `TrackedDetection`, and `FenceEventManager`.
+- Added cross-product side checks and per-track previous-side memory to detect line crossings.
+- Added per-track event cooldown using `IBVAP_EVENT_COOLDOWN_SECONDS`, defaulting to `4.0` seconds.
+- Added structured event dicts with `event_id`, `camera_id`, `timestamp`, `event_type`, `object_type`, `track_id`, `confidence`, and `evidence_path`.
+- Added event evidence snapshots saved as `evidence/<event_id>.jpg`.
+- Added visible virtual-fence drawing on the OpenCV output window.
+- Added `backend/event_runtime.py` to keep event/evidence/logging orchestration outside the detector class.
+- Added `backend/utils/detections.py` to adapt YOLO results into plain event-layer detections.
+- Added `backend/utils/evidence.py` for bounding-box crop and JPEG writing.
+
+### Exact Command To Test
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python backend\detector.py
+```
+
+Walk across the red horizontal line in the OpenCV window. You should see one pretty-printed `VIRTUAL_FENCE_CROSS` JSON event in the console for that track, then no duplicates until the cooldown expires. Confirm a matching JPEG appears under `evidence/`.
+
+### Configuration
+
+Default virtual fence and event settings:
+
+```dotenv
+IBVAP_CAMERA_ID=cam_01
+IBVAP_FENCE_START=0.0,0.5
+IBVAP_FENCE_END=1.0,0.5
+IBVAP_EVENT_COOLDOWN_SECONDS=4.0
+IBVAP_EVIDENCE_DIR=evidence
+```
+
+Fence coordinates from `0.0` to `1.0` are interpreted as normalized frame coordinates, so `0.0,0.5` to `1.0,0.5` becomes a horizontal mid-frame line regardless of camera resolution.
+
+### Gotchas
+
+- Crossing events require a valid track ID, so detections without tracker IDs are ignored by event logic.
+- If a center point lands exactly on the fence line, that frame is ignored rather than firing a noisy event.
+- Final visual confirmation still needs a desktop session with webcam or sample-video access.
+
+### Next
+
+- Stop here until Phase 3 is confirmed.
+- Phase 4 should persist these structured events through FastAPI and SQLite rather than changing the fence-crossing logic.

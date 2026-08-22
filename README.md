@@ -1,8 +1,8 @@
 # IBVAP - Intelligent Border Video Analytics Platform
 
-Phase 0 through Phase 2 prototype for the IBVAP perception layer. This stage
-runs YOLOv8 tracking on a webcam or video file and annotates people and vehicles
-with persistent track IDs.
+Phase 0 through Phase 3 prototype for the IBVAP perception layer. This stage
+runs YOLOv8 tracking on a webcam or video file, annotates people and vehicles
+with persistent track IDs, and logs virtual-fence crossing events.
 
 ## Setup
 
@@ -52,6 +52,17 @@ Tracker type:
 IBVAP_TRACKER_TYPE=bytetrack.yaml
 ```
 
+Virtual fence defaults to a horizontal line halfway down the frame. Values from
+`0.0` to `1.0` are treated as normalized frame coordinates:
+
+```dotenv
+IBVAP_CAMERA_ID=cam_01
+IBVAP_FENCE_START=0.0,0.5
+IBVAP_FENCE_END=1.0,0.5
+IBVAP_EVENT_COOLDOWN_SECONDS=4.0
+IBVAP_EVIDENCE_DIR=evidence
+```
+
 ## Run
 
 ```powershell
@@ -60,7 +71,9 @@ python backend/detector.py
 
 The OpenCV window should show live tracked detections for people, cars,
 motorcycles, buses, and trucks. Labels include persistent track IDs, such as
-`person #4  0.87`. Press `q` while the window is focused to exit.
+`person #4  0.87`. A red virtual fence line is drawn across the frame. Crossing
+it logs one JSON event per track after cooldown and saves a cropped JPEG under
+`evidence/`. Press `q` while the window is focused to exit.
 
 If `py -3.12` is unavailable, install Python 3.12 or 3.11, recreate the venv,
 and run the install command again.

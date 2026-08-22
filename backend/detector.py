@@ -1,4 +1,4 @@
-"""YOLOv8 detection and tracking pipeline for IBVAP Phase 2."""
+"""YOLOv8 detection, tracking, and event pipeline for IBVAP Phase 3."""
 
 from __future__ import annotations
 
@@ -18,7 +18,9 @@ if __package__ is None or __package__ == "":
 
 from backend import config
 from backend.config import Settings, get_settings
+from backend.event_runtime import VirtualFenceRuntime
 from backend.utils.annotation import draw_detections, get_track_id
+from backend.utils.detections import extract_tracked_detections
 from backend.utils.video_source import open_video_source
 
 logging.basicConfig(
@@ -39,6 +41,7 @@ class Detector:
         self.frame_count = 0
         self.fps_started_at = time.perf_counter()
         self.seen_track_ids: set[int] = set()
+        self.event_runtime = VirtualFenceRuntime(settings)
 
     def load_model(self) -> YOLO:
         """Load the configured YOLO model."""
@@ -79,7 +82,8 @@ class Detector:
         return results[0]
 
     def annotate_frame(self, frame: np.ndarray, result: Any) -> np.ndarray:
-        """Draw bounding boxes, track IDs, labels, and confidence scores."""
+        """Draw fence, boxes, track IDs, labels, and confidence scores."""
+        self.event_runtime.draw(frame)
         return draw_detections(frame, result)
 
     def log_new_tracks(self, result: Any) -> None:
@@ -120,6 +124,8 @@ class Detector:
 
                 result = self.run_inference(frame)
                 self.log_new_tracks(result)
+                detections = extract_tracked_detections(result)
+                self.event_runtime.process(frame, detections)
                 annotated = self.annotate_frame(frame, result)
                 cv2.imshow(config.WINDOW_NAME, annotated)
                 self.log_fps()

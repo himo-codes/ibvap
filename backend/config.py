@@ -16,6 +16,11 @@ DEFAULT_CLASS_FILTER = (0, 2, 3, 5, 7)
 DEFAULT_VIDEO_SOURCE = "0"
 DEFAULT_FRAME_LOG_INTERVAL = 30
 DEFAULT_TRACKER_TYPE = "bytetrack.yaml"
+DEFAULT_CAMERA_ID = "cam_01"
+DEFAULT_FENCE_START = (0.0, 0.5)
+DEFAULT_FENCE_END = (1.0, 0.5)
+DEFAULT_EVENT_COOLDOWN_SECONDS = 4.0
+DEFAULT_EVIDENCE_DIR = PROJECT_ROOT / "evidence"
 
 WINDOW_NAME = "IBVAP Detection"
 EXIT_KEY = "q"
@@ -23,6 +28,8 @@ BOX_COLOR = (0, 255, 0)
 TEXT_COLOR = (255, 255, 255)
 TEXT_BACKGROUND_COLOR = (0, 128, 0)
 BOX_THICKNESS = 2
+FENCE_COLOR = (0, 0, 255)
+FENCE_THICKNESS = 2
 TEXT_FONT = 0
 TEXT_SCALE = 0.6
 TEXT_THICKNESS = 2
@@ -47,6 +54,22 @@ def _parse_class_filter(raw_value: str) -> tuple[int, ...]:
     return tuple(int(item.strip()) for item in raw_value.split(",") if item.strip())
 
 
+def _parse_point(raw_value: str) -> tuple[float, float]:
+    """Parse an x,y point from configuration."""
+    parts = [part.strip() for part in raw_value.split(",") if part.strip()]
+    if len(parts) != 2:
+        raise ValueError(f"Expected point as x,y, got: {raw_value}")
+    return (float(parts[0]), float(parts[1]))
+
+
+def _parse_project_path(raw_value: str) -> Path:
+    """Parse a path, resolving relative paths from the project root."""
+    path = Path(raw_value)
+    if path.is_absolute():
+        return path
+    return PROJECT_ROOT / path
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings for the detector."""
@@ -57,6 +80,11 @@ class Settings:
     video_source: str
     frame_log_interval: int
     tracker_type: str
+    camera_id: str
+    fence_start: tuple[float, float]
+    fence_end: tuple[float, float]
+    event_cooldown_seconds: float
+    evidence_dir: Path
 
 
 def get_settings() -> Settings:
@@ -79,4 +107,26 @@ def get_settings() -> Settings:
             os.getenv("IBVAP_FRAME_LOG_INTERVAL", str(DEFAULT_FRAME_LOG_INTERVAL))
         ),
         tracker_type=os.getenv("IBVAP_TRACKER_TYPE", DEFAULT_TRACKER_TYPE),
+        camera_id=os.getenv("IBVAP_CAMERA_ID", DEFAULT_CAMERA_ID),
+        fence_start=_parse_point(
+            os.getenv(
+                "IBVAP_FENCE_START",
+                ",".join(str(value) for value in DEFAULT_FENCE_START),
+            )
+        ),
+        fence_end=_parse_point(
+            os.getenv(
+                "IBVAP_FENCE_END",
+                ",".join(str(value) for value in DEFAULT_FENCE_END),
+            )
+        ),
+        event_cooldown_seconds=float(
+            os.getenv(
+                "IBVAP_EVENT_COOLDOWN_SECONDS",
+                str(DEFAULT_EVENT_COOLDOWN_SECONDS),
+            )
+        ),
+        evidence_dir=_parse_project_path(
+            os.getenv("IBVAP_EVIDENCE_DIR", str(DEFAULT_EVIDENCE_DIR))
+        ),
     )
