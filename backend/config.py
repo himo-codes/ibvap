@@ -21,6 +21,8 @@ DEFAULT_FENCE_START = (0.0, 0.5)
 DEFAULT_FENCE_END = (1.0, 0.5)
 DEFAULT_EVENT_COOLDOWN_SECONDS = 4.0
 DEFAULT_EVIDENCE_DIR = PROJECT_ROOT / "evidence"
+DEFAULT_DATABASE_PATH = PROJECT_ROOT / "ibvap.db"
+DEFAULT_DISPLAY_ENABLED = False
 
 WINDOW_NAME = "IBVAP Detection"
 EXIT_KEY = "q"
@@ -85,6 +87,8 @@ class Settings:
     fence_end: tuple[float, float]
     event_cooldown_seconds: float
     evidence_dir: Path
+    database_path: Path
+    display_enabled: bool
 
 
 def get_settings() -> Settings:
@@ -129,4 +133,20 @@ def get_settings() -> Settings:
         evidence_dir=_parse_project_path(
             os.getenv("IBVAP_EVIDENCE_DIR", str(DEFAULT_EVIDENCE_DIR))
         ),
+        database_path=_parse_project_path(
+            os.getenv("IBVAP_DATABASE_PATH", str(DEFAULT_DATABASE_PATH))
+        ),
+        display_enabled=_parse_bool(
+            os.getenv("IBVAP_DISPLAY_ENABLED", str(DEFAULT_DISPLAY_ENABLED))
+        ),
     )
+
+
+def _parse_bool(raw_value: str) -> bool:
+    """Parse common environment boolean strings."""
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Expected boolean value, got: {raw_value}")

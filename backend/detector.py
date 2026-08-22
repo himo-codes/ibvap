@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -33,9 +34,14 @@ LOGGER = logging.getLogger(__name__)
 class Detector:
     """YOLO-backed detector and tracker for people and vehicle classes."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        stop_event: threading.Event | None = None,
+    ) -> None:
         """Create a detector with config-driven runtime settings."""
         self.settings = settings
+        self.stop_event = stop_event
         self.model: YOLO | None = None
         self.capture: VideoCapture | None = None
         self.frame_count = 0
@@ -126,24 +132,38 @@ class Detector:
                 self.log_new_tracks(result)
                 detections = extract_tracked_detections(result)
                 self.event_runtime.process(frame, detections)
-                annotated = self.annotate_frame(frame, result)
-                cv2.imshow(config.WINDOW_NAME, annotated)
+                if self.settings.display_enabled:
+                    annotated = self.annotate_frame(frame, result)
+                    cv2.imshow(config.WINDOW_NAME, annotated)
                 self.log_fps()
 
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord(config.EXIT_KEY):
-                    LOGGER.info("Exit key pressed; stopping detector")
+                if self.should_stop_from_user_input():
                     break
         except cv2.error as exc:
             LOGGER.error("OpenCV error while running detector: %s", exc)
         finally:
             self.close()
 
+    def should_stop_from_user_input(self) -> bool:
+        """Return true when stop was requested or display exit key is pressed."""
+        if self.stop_event is not None and self.stop_event.is_set():
+            LOGGER.info("Stop requested; stopping detector")
+            return True
+        if not self.settings.display_enabled:
+            return False
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord(config.EXIT_KEY):
+            LOGGER.info("Exit key pressed; stopping detector")
+            return True
+        return False
+
     def close(self) -> None:
         """Release OpenCV resources."""
         if self.capture is not None:
             self.capture.release()
-        cv2.destroyAllWindows()
+        if self.settings.display_enabled:
+            cv2.destroyAllWindows()
 
 
 def main() -> None:

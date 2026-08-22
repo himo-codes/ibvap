@@ -143,5 +143,57 @@ Fence coordinates from `0.0` to `1.0` are interpreted as normalized frame coordi
 
 ### Next
 
-- Stop here until Phase 3 is confirmed.
 - Phase 4 should persist these structured events through FastAPI and SQLite rather than changing the fence-crossing logic.
+
+## Section 5 - Phase 4 FastAPI + SQLite Handoff
+
+### Done
+
+- Added FastAPI and Uvicorn dependencies in `requirements.txt`.
+- Added `backend/db.py` with SQLite setup, an `events` table matching the event schema, thread-locked inserts, single-event lookup, and filtered event listing.
+- Updated `backend/event_runtime.py` so every fired fence event is saved to SQLite and still logged as pretty JSON.
+- Added `backend/main.py` with FastAPI routes: `GET /health`, `GET /events`, and `GET /events/{event_id}`.
+- Mounted the configured evidence directory at `/evidence` for snapshot access by URL.
+- Added a background detector thread started from FastAPI lifespan startup, with a stop event used during shutdown.
+- Added `IBVAP_DISPLAY_ENABLED` so the detector can run headless under the API server while still tracking, firing events, saving evidence, and writing SQLite rows.
+- Added `IBVAP_DATABASE_PATH`, defaulting to `ibvap.db`.
+- Ignored generated SQLite files in `.gitignore`.
+
+### Exact Command To Test
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+uvicorn backend.main:app --reload
+```
+
+Then open:
+
+```text
+http://localhost:8000/health
+http://localhost:8000/events
+```
+
+Trigger a virtual-fence crossing on the camera or sample video, wait a few seconds, then refresh `http://localhost:8000/events`. The newest event should appear first, and its `evidence_path` should correspond to a JPEG available under `/evidence/<filename>`.
+
+### Configuration
+
+Headless API mode is the default:
+
+```dotenv
+IBVAP_DISPLAY_ENABLED=false
+IBVAP_DATABASE_PATH=ibvap.db
+```
+
+Set `IBVAP_DISPLAY_ENABLED=true` for the OpenCV preview window while the API runs.
+
+### Gotchas
+
+- `uvicorn --reload` uses a reloader process. The detector thread starts inside the serving process during FastAPI lifespan startup.
+- If no webcam or configured video source is available, the API can still start, but the detector thread will log the camera/source failure and stop.
+- SQLite access is serialized with a module-level lock so event writes from the detector thread and reads from API requests do not share raw mutable state.
+
+### Next
+
+- Stop here until Phase 4 is confirmed.
+- Phase 5 should build the dashboard against these HTTP endpoints instead of reading SQLite directly.

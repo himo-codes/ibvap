@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from pathlib import Path
 
 import numpy as np
 
 from backend.config import Settings
+from backend.db import init_db, insert_event
 from backend.events import Fence, FenceEventManager, TrackedDetection
 from backend.utils.annotation import draw_fence
 from backend.utils.evidence import save_evidence_snapshot
@@ -23,6 +25,7 @@ class VirtualFenceRuntime:
         """Create a runtime from detector settings."""
         self.settings = settings
         self.event_manager: FenceEventManager | None = None
+        init_db(settings.database_path)
 
     def draw(self, frame: np.ndarray) -> None:
         """Draw the virtual fence when it has been initialized."""
@@ -43,6 +46,10 @@ class VirtualFenceRuntime:
                 Path(str(event["evidence_path"])),
             ):
                 LOGGER.warning("Failed to save evidence for event %s", event["event_id"])
+            try:
+                insert_event(event, self.settings.database_path)
+            except (sqlite3.Error, OSError) as exc:
+                LOGGER.error("Failed to store event %s: %s", event["event_id"], exc)
             LOGGER.info("Fence event:\n%s", json.dumps(event, indent=2))
 
     def _ensure_event_manager(self, frame: np.ndarray) -> FenceEventManager:

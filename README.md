@@ -1,8 +1,8 @@
 # IBVAP - Intelligent Border Video Analytics Platform
 
-Phase 0 through Phase 3 prototype for the IBVAP perception layer. This stage
-runs YOLOv8 tracking on a webcam or video file, annotates people and vehicles
-with persistent track IDs, and logs virtual-fence crossing events.
+Phase 0 through Phase 4 prototype for the IBVAP perception and backend layer.
+This stage runs YOLOv8 tracking in a background thread, stores virtual-fence
+crossing events in SQLite, and serves them through FastAPI.
 
 ## Setup
 
@@ -61,9 +61,30 @@ IBVAP_FENCE_START=0.0,0.5
 IBVAP_FENCE_END=1.0,0.5
 IBVAP_EVENT_COOLDOWN_SECONDS=4.0
 IBVAP_EVIDENCE_DIR=evidence
+IBVAP_DATABASE_PATH=ibvap.db
+IBVAP_DISPLAY_ENABLED=false
 ```
 
 ## Run
+
+Start the API and detector together:
+
+```powershell
+uvicorn backend.main:app --reload
+```
+
+Open these URLs:
+
+```text
+http://localhost:8000/health
+http://localhost:8000/events
+http://localhost:8000/evidence/<event_id>.jpg
+```
+
+With `IBVAP_DISPLAY_ENABLED=false`, the detector runs headless and still writes
+crossing events to SQLite. Set it to `true` to show the OpenCV preview window.
+
+You can still run the detector directly for local camera debugging:
 
 ```powershell
 python backend/detector.py
@@ -71,9 +92,10 @@ python backend/detector.py
 
 The OpenCV window should show live tracked detections for people, cars,
 motorcycles, buses, and trucks. Labels include persistent track IDs, such as
-`person #4  0.87`. A red virtual fence line is drawn across the frame. Crossing
-it logs one JSON event per track after cooldown and saves a cropped JPEG under
-`evidence/`. Press `q` while the window is focused to exit.
+`person #4  0.87`. When display is enabled, a red virtual fence line is drawn
+across the frame. Crossing it logs one JSON event per track after cooldown,
+saves a cropped JPEG under `evidence/`, and makes the event available from
+`GET /events`. Press `q` while the OpenCV window is focused to exit.
 
 If `py -3.12` is unavailable, install Python 3.12 or 3.11, recreate the venv,
 and run the install command again.
