@@ -11,6 +11,20 @@ from uuid import uuid4
 
 Point = tuple[float, float]
 BBox = tuple[int, int, int, int]
+PERSON_CLASS_NAMES = {"person"}
+VEHICLE_CLASS_NAMES = {"car", "motorcycle", "bus", "truck"}
+ANIMAL_CLASS_NAMES = {
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+}
 
 
 @dataclass(frozen=True)
@@ -31,8 +45,12 @@ class TrackedDetection:
     @property
     def object_type(self) -> str:
         """Map class names into event-facing object types."""
-        if self.class_name == "person":
+        if self.class_name in PERSON_CLASS_NAMES:
             return "person"
+        if self.class_name in VEHICLE_CLASS_NAMES:
+            return "vehicle"
+        if self.class_name in ANIMAL_CLASS_NAMES:
+            return "animal"
         return "vehicle"
 
 
@@ -68,6 +86,46 @@ class Fence:
         if cross < 0:
             return -1
         return 0
+
+
+@dataclass(frozen=True)
+class RestrictedZone:
+    """Polygon used for restricted-zone entry detection."""
+
+    points: tuple[Point, ...]
+
+    @classmethod
+    def from_frame(
+        cls,
+        points: tuple[Point, ...],
+        frame_width: int,
+        frame_height: int,
+    ) -> RestrictedZone:
+        """Build a polygon from pixel or normalized frame coordinates."""
+        return cls(
+            points=tuple(
+                _scale_point(point, frame_width, frame_height)
+                for point in points
+            )
+        )
+
+    def contains(self, point: Point) -> bool:
+        """Return whether a point is inside the polygon."""
+        x, y = point
+        inside = False
+        previous_x, previous_y = self.points[-1]
+
+        for current_x, current_y in self.points:
+            crosses_y = (current_y > y) != (previous_y > y)
+            if crosses_y:
+                slope_x = (previous_x - current_x) * (y - current_y)
+                slope_x /= previous_y - current_y
+                intersect_x = slope_x + current_x
+                if x < intersect_x:
+                    inside = not inside
+            previous_x, previous_y = current_x, current_y
+
+        return inside
 
 
 class FenceEventManager:
@@ -109,6 +167,62 @@ class FenceEventManager:
                     camera_id=self.camera_id,
                     detection=detection,
                     evidence_dir=evidence_dir,
+                    event_type="VIRTUAL_FENCE_CROSS",
+                )
+            )
+
+        return events
+
+    def _is_in_cooldown(self, track_id: int, now: float) -> bool:
+        """Return whether a track is still inside its event cooldown."""
+        last_event_at = self.last_event_at_by_track.get(track_id)
+        if last_event_at is None:
+            return False
+        return now - last_event_at < self.cooldown_seconds
+
+
+class RestrictedZoneEventManager:
+    """Emit per-track restricted-zone entry events with cooldown."""
+
+    def __init__(
+        self,
+        camera_id: str,
+        zone: RestrictedZone,
+        cooldown_seconds: float,
+    ) -> None:
+        """Create a restricted-zone event manager."""
+        self.camera_id = camera_id
+        self.zone = zone
+        self.cooldown_seconds = cooldown_seconds
+        self.last_inside_by_track: dict[int, bool] = {}
+        self.last_event_at_by_track: dict[int, float] = {}
+
+    def process(
+        self,
+        detections: list[TrackedDetection],
+        evidence_dir: Path,
+    ) -> list[dict[str, object]]:
+        """Return events for detections currently inside the restricted zone."""
+        events: list[dict[str, object]] = []
+        now = monotonic()
+
+        for detection in detections:
+            is_inside = self.zone.contains(detection.center)
+            was_inside = self.last_inside_by_track.get(detection.track_id, False)
+            self.last_inside_by_track[detection.track_id] = is_inside
+
+            if not is_inside or was_inside:
+                continue
+            if self._is_in_cooldown(detection.track_id, now):
+                continue
+
+            self.last_event_at_by_track[detection.track_id] = now
+            events.append(
+                build_event(
+                    camera_id=self.camera_id,
+                    detection=detection,
+                    evidence_dir=evidence_dir,
+                    event_type="RESTRICTED_ZONE_ENTRY",
                 )
             )
 
@@ -126,18 +240,36 @@ def build_event(
     camera_id: str,
     detection: TrackedDetection,
     evidence_dir: Path,
+    event_type: str,
 ) -> dict[str, object]:
-    """Build a structured virtual fence crossing event."""
+    """Build a structured event with an evidence path."""
     event_id = str(uuid4())
     return {
         "event_id": event_id,
         "camera_id": camera_id,
         "timestamp": datetime.now(UTC).isoformat(),
-        "event_type": "VIRTUAL_FENCE_CROSS",
+        "event_type": event_type,
         "object_type": detection.object_type,
         "track_id": detection.track_id,
         "confidence": detection.confidence,
         "evidence_path": str(evidence_dir / f"{event_id}.jpg"),
+    }
+
+
+def build_new_object_event(
+    camera_id: str,
+    detection: TrackedDetection,
+) -> dict[str, object]:
+    """Build a low-severity event for a first-seen track."""
+    return {
+        "event_id": str(uuid4()),
+        "camera_id": camera_id,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "event_type": "NEW_OBJECT_DETECTED",
+        "object_type": detection.object_type,
+        "track_id": detection.track_id,
+        "confidence": detection.confidence,
+        "evidence_path": "",
     }
 
 

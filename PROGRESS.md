@@ -195,5 +195,106 @@ Set `IBVAP_DISPLAY_ENABLED=true` for the OpenCV preview window while the API run
 
 ### Next
 
-- Stop here until Phase 4 is confirmed.
 - Phase 5 should build the dashboard against these HTTP endpoints instead of reading SQLite directly.
+
+## Section 5 - Phase 5 Dashboard Handoff
+
+### Done
+
+- Added `frontend/index.html` with an operator-facing "IBVAP - Live Alerts" dashboard shell.
+- Added `frontend/app.js` polling `http://localhost:8000/events` every 2.5 seconds and inserting only new alert DOM nodes.
+- Added alert acknowledgement actions that POST `{"status": "confirmed"}` or `{"status": "rejected"}` to `/events/{event_id}/ack`.
+- Added `frontend/style.css` with a dark monitoring-station layout, severity styling, evidence thumbnails, and handled-alert states.
+- Added `ack_status` to the SQLite `events` schema with default `pending`, including migration for existing Phase 4 databases.
+- Added `POST /events/{event_id}/ack` in FastAPI with validation for `confirmed` and `rejected`.
+- Enabled CORS on the FastAPI app so `frontend/index.html` can be opened directly from disk and still call the backend.
+
+### Exact Command To Test
+
+```powershell
+.\venv\Scripts\Activate.ps1
+uvicorn backend.main:app --reload
+```
+
+Then open `frontend/index.html` in a browser. The dashboard should show existing events from:
+
+```text
+http://localhost:8000/events
+```
+
+Trigger a virtual-fence crossing. A new alert should appear within a few seconds without refreshing the page. Click Confirm or Reject and the alert should become handled while the backend stores the updated `ack_status`.
+
+### Gotchas
+
+- The dashboard expects the backend on `http://localhost:8000`.
+- Evidence images are loaded from the backend static mount at `/evidence/<filename>`.
+- Existing Phase 4 databases are migrated in-place when `init_db()` runs.
+
+### Next
+
+- Stop here until Phase 5 is confirmed.
+- Phase 6 should add advanced analytics such as loitering/ANPR without changing the dashboard's basic event feed contract.
+
+## Section 5 - Phase 3/5/6 Dashboard Upgrade Handoff
+
+### Done
+
+- Added a lock-protected live detector state buffer for the latest annotated frame and active counts.
+- Added `GET /video_feed` streaming multipart MJPEG from the same detector loop frame, without opening a second camera connection.
+- Added `GET /stats` returning current-frame `person`, `vehicle`, and `animal` counts.
+- Added a configurable restricted-zone polygon via `IBVAP_RESTRICTED_ZONE`, with normalized coordinate support.
+- Added immediate `RESTRICTED_ZONE_ENTRY` events with the same per-track cooldown pattern as fence crossings.
+- Added COCO animal classes `14-23` to the default class filter and counts animals separately from people and vehicles.
+- Added quiet `NEW_OBJECT_DETECTED` events for first-seen track IDs.
+- Added stamped evidence crops for fence and zone events with human-readable timestamp plus `IBVAP_LOCATION_LABEL`.
+- Added dashboard camera toggle behavior: hidden by default, `Open Camera` sets the MJPEG image source, `Close Camera` clears it.
+- Added a live counts panel that polls independently of whether the camera view is open.
+- Added Web Audio alarm beep plus a flashing red banner for `VIRTUAL_FENCE_CROSS` and `RESTRICTED_ZONE_ENTRY` only.
+
+### Exact Commands To Test
+
+```powershell
+.\venv\Scripts\Activate.ps1
+uvicorn backend.main:app --reload
+```
+
+In another terminal:
+
+```powershell
+python -m http.server 8080 -d frontend
+```
+
+Open:
+
+```text
+http://localhost:8080/
+http://localhost:8000/health
+http://localhost:8000/events
+http://localhost:8000/stats
+http://localhost:8000/video_feed
+```
+
+### Verification Checklist
+
+- Dashboard at `http://localhost:8080/` shows counts and alert feed immediately, with the camera panel hidden.
+- Click `Open Camera`; the button changes to `Close Camera` and the annotated MJPEG stream appears.
+- Click `Close Camera`; the panel hides and the image source is cleared so the MJPEG stream is no longer pulled in the background.
+- Move a tracked object into the restricted polygon; a `RESTRICTED_ZONE_ENTRY` alert appears, the alarm beep plays, and the red banner flashes even if the camera panel is closed.
+- Cross the virtual fence; a `VIRTUAL_FENCE_CROSS` alert appears, the alarm beep plays, and a cropped JPEG appears under `evidence/`.
+- Open the saved JPEG through `http://localhost:8000/evidence/<filename>.jpg` and confirm the timestamp plus location label are burned into the image.
+- Introduce a new tracked person, vehicle, or animal; a `NEW_OBJECT_DETECTED` alert appears without the alarm.
+- Watch `http://localhost:8000/stats` or the dashboard counts panel and confirm the numbers reflect actively tracked objects, not cumulative totals.
+
+### Configuration
+
+```dotenv
+IBVAP_CLASS_FILTER=0,2,3,5,7,14,15,16,17,18,19,20,21,22,23
+IBVAP_LOCATION_LABEL=BOP West Gate - Camera 1
+IBVAP_RESTRICTED_ZONE=0.62,0.18;0.95,0.18;0.95,0.82;0.62,0.82
+```
+
+### Gotchas
+
+- Browser audio may require one user interaction before the first audible beep; the dashboard unlocks audio on the first pointer interaction.
+- Counts require tracker IDs, so first frames before ByteTrack assigns IDs may briefly show zero.
+- If no webcam or configured video source is available, `/stats` stays at zero and `/video_feed` waits for the detector to publish a frame.

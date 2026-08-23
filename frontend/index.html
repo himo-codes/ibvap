@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IBVAP &mdash; Live Alerts</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>IBVAP &mdash; Live Alerts</h1>
+        <p id="connection-status">Connecting to backend...</p>
+      </div>
+      <div class="summary">
+        <span id="alert-count">0</span>
+        <span>active alerts</span>
+      </div>
+    </header>
+
+    <main>
+      <div id="alarm-banner" class="alarm-banner" hidden>Critical border event detected</div>
+
+      <section class="live-controls" aria-label="Live camera and counts">
+        <button id="camera-toggle" type="button">Open Camera</button>
+        <div class="counts-panel" aria-live="polite">
+          <div>
+            <span>Person</span>
+            <strong id="person-count">0</strong>
+          </div>
+          <div>
+            <span>Vehicle</span>
+            <strong id="vehicle-count">0</strong>
+          </div>
+          <div>
+            <span>Animal</span>
+            <strong id="animal-count">0</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="camera-panel" class="camera-panel" hidden>
+        <img id="camera-feed" alt="Annotated live camera feed" />
+      </section>
+
+      <section id="alert-feed" class="alert-feed" aria-live="polite"></section>
+      <section id="empty-state" class="empty-state">
+        <h2>No alerts yet</h2>
+        <p>New detection, fence, and restricted-zone alerts will appear here automatically.</p>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

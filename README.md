@@ -1,8 +1,9 @@
 # IBVAP - Intelligent Border Video Analytics Platform
 
-Phase 0 through Phase 4 prototype for the IBVAP perception and backend layer.
-This stage runs YOLOv8 tracking in a background thread, stores virtual-fence
-crossing events in SQLite, and serves them through FastAPI.
+Phase 0 through Phase 6 prototype for the IBVAP perception and backend layer.
+This stage runs YOLOv8 tracking in a background thread, stores virtual-fence,
+restricted-zone, and new-object events in SQLite, serves annotated MJPEG video
+and live stats through FastAPI, and displays alerts in a browser dashboard.
 
 ## Setup
 
@@ -52,17 +53,26 @@ Tracker type:
 IBVAP_TRACKER_TYPE=bytetrack.yaml
 ```
 
-Virtual fence defaults to a horizontal line halfway down the frame. Values from
-`0.0` to `1.0` are treated as normalized frame coordinates:
+Virtual fence defaults to a horizontal line halfway down the frame. The
+restricted zone defaults to a right-side polygon. Values from `0.0` to `1.0`
+are treated as normalized frame coordinates:
 
 ```dotenv
 IBVAP_CAMERA_ID=cam_01
+IBVAP_LOCATION_LABEL=BOP West Gate - Camera 1
 IBVAP_FENCE_START=0.0,0.5
 IBVAP_FENCE_END=1.0,0.5
+IBVAP_RESTRICTED_ZONE=0.62,0.18;0.95,0.18;0.95,0.82;0.62,0.82
 IBVAP_EVENT_COOLDOWN_SECONDS=4.0
 IBVAP_EVIDENCE_DIR=evidence
 IBVAP_DATABASE_PATH=ibvap.db
 IBVAP_DISPLAY_ENABLED=false
+```
+
+Default detected COCO classes include people, vehicles, and animals:
+
+```dotenv
+IBVAP_CLASS_FILTER=0,2,3,5,7,14,15,16,17,18,19,20,21,22,23
 ```
 
 ## Run
@@ -78,7 +88,21 @@ Open these URLs:
 ```text
 http://localhost:8000/health
 http://localhost:8000/events
+http://localhost:8000/stats
+http://localhost:8000/video_feed
 http://localhost:8000/evidence/<event_id>.jpg
+```
+
+Serve the dashboard with `http.server` while the backend is running:
+
+```powershell
+python -m http.server 8080 -d frontend
+```
+
+Then open:
+
+```text
+http://localhost:8080/
 ```
 
 With `IBVAP_DISPLAY_ENABLED=false`, the detector runs headless and still writes
@@ -90,12 +114,19 @@ You can still run the detector directly for local camera debugging:
 python backend/detector.py
 ```
 
-The OpenCV window should show live tracked detections for people, cars,
-motorcycles, buses, and trucks. Labels include persistent track IDs, such as
-`person #4  0.87`. When display is enabled, a red virtual fence line is drawn
-across the frame. Crossing it logs one JSON event per track after cooldown,
-saves a cropped JPEG under `evidence/`, and makes the event available from
-`GET /events`. Press `q` while the OpenCV window is focused to exit.
+The dashboard loads with the counts panel and alert feed visible and the video
+hidden. Click `Open Camera` to set the MJPEG image source and show the annotated
+stream; click `Close Camera` to hide the panel and clear the image source so the
+browser stops pulling video. The annotated stream includes boxes, labels, track
+IDs, the red virtual fence, the amber restricted-zone polygon, and current
+person/vehicle/animal counts.
+
+Crossing the virtual fence creates `VIRTUAL_FENCE_CROSS`; entering the polygon
+creates `RESTRICTED_ZONE_ENTRY`; a first-seen track creates
+`NEW_OBJECT_DETECTED`. Fence and zone events play the dashboard beep, flash the
+red banner, and save cropped evidence photos with the timestamp and configured
+location label burned into the image. New-object events appear quietly in the
+feed without the alarm.
 
 If `py -3.12` is unavailable, install Python 3.12 or 3.11, recreate the venv,
 and run the install command again.

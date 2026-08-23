@@ -11,8 +11,14 @@ import numpy as np
 
 from backend.config import Settings
 from backend.db import init_db, insert_event
-from backend.events import Fence, FenceEventManager, TrackedDetection
-from backend.utils.annotation import draw_fence
+from backend.events import (
+    Fence,
+    FenceEventManager,
+    RestrictedZone,
+    RestrictedZoneEventManager,
+    TrackedDetection,
+)
+from backend.utils.annotation import draw_fence, draw_restricted_zone
 from backend.utils.evidence import save_evidence_snapshot
 
 LOGGER = logging.getLogger(__name__)
@@ -24,18 +30,22 @@ class VirtualFenceRuntime:
     def __init__(self, settings: Settings) -> None:
         """Create a runtime from detector settings."""
         self.settings = settings
-        self.event_manager: FenceEventManager | None = None
+        self.fence_event_manager: FenceEventManager | None = None
+        self.zone_event_manager: RestrictedZoneEventManager | None = None
         init_db(settings.database_path)
 
     def draw(self, frame: np.ndarray) -> None:
         """Draw the virtual fence when it has been initialized."""
-        if self.event_manager is not None:
-            draw_fence(frame, self.event_manager.fence)
+        if self.fence_event_manager is not None:
+            draw_fence(frame, self.fence_event_manager.fence)
+        if self.zone_event_manager is not None:
+            draw_restricted_zone(frame, self.zone_event_manager.zone)
 
     def process(self, frame: np.ndarray, detections: list[TrackedDetection]) -> None:
         """Generate events, save evidence, and log fired events."""
-        event_manager = self._ensure_event_manager(frame)
-        events = event_manager.process(detections, self.settings.evidence_dir)
+        fence_event_manager, zone_event_manager = self._ensure_event_managers(frame)
+        events = fence_event_manager.process(detections, self.settings.evidence_dir)
+        events.extend(zone_event_manager.process(detections, self.settings.evidence_dir))
         detections_by_track = {detection.track_id: detection for detection in detections}
 
         for event in events:
@@ -44,6 +54,8 @@ class VirtualFenceRuntime:
                 frame,
                 detection,
                 Path(str(event["evidence_path"])),
+                self.settings.location_label,
+                str(event["timestamp"]),
             ):
                 LOGGER.warning("Failed to save evidence for event %s", event["event_id"])
             try:
@@ -52,10 +64,13 @@ class VirtualFenceRuntime:
                 LOGGER.error("Failed to store event %s: %s", event["event_id"], exc)
             LOGGER.info("Fence event:\n%s", json.dumps(event, indent=2))
 
-    def _ensure_event_manager(self, frame: np.ndarray) -> FenceEventManager:
-        """Create the fence event manager once frame dimensions are known."""
-        if self.event_manager is not None:
-            return self.event_manager
+    def _ensure_event_managers(
+        self,
+        frame: np.ndarray,
+    ) -> tuple[FenceEventManager, RestrictedZoneEventManager]:
+        """Create event managers once frame dimensions are known."""
+        if self.fence_event_manager is not None and self.zone_event_manager is not None:
+            return self.fence_event_manager, self.zone_event_manager
 
         height, width = frame.shape[:2]
         fence = Fence.from_frame(
@@ -64,10 +79,21 @@ class VirtualFenceRuntime:
             width,
             height,
         )
-        self.event_manager = FenceEventManager(
+        self.fence_event_manager = FenceEventManager(
             camera_id=self.settings.camera_id,
             fence=fence,
             cooldown_seconds=self.settings.event_cooldown_seconds,
         )
+        zone = RestrictedZone.from_frame(
+            self.settings.restricted_zone,
+            width,
+            height,
+        )
+        self.zone_event_manager = RestrictedZoneEventManager(
+            camera_id=self.settings.camera_id,
+            zone=zone,
+            cooldown_seconds=self.settings.event_cooldown_seconds,
+        )
         LOGGER.info("Virtual fence initialized: %s -> %s", fence.start, fence.end)
-        return self.event_manager
+        LOGGER.info("Restricted zone initialized: %s", zone.points)
+        return self.fence_event_manager, self.zone_event_manager

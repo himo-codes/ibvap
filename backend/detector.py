@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 import sys
 import threading
 import time
@@ -19,8 +20,11 @@ if __package__ is None or __package__ == "":
 
 from backend import config
 from backend.config import Settings, get_settings
+from backend.db import insert_event
 from backend.event_runtime import VirtualFenceRuntime
-from backend.utils.annotation import draw_detections, get_track_id
+from backend.events import build_new_object_event
+from backend.live_state import LiveDetectorState
+from backend.utils.annotation import draw_counts_overlay, draw_detections
 from backend.utils.detections import extract_tracked_detections
 from backend.utils.video_source import open_video_source
 
@@ -38,10 +42,12 @@ class Detector:
         self,
         settings: Settings,
         stop_event: threading.Event | None = None,
+        live_state: LiveDetectorState | None = None,
     ) -> None:
         """Create a detector with config-driven runtime settings."""
         self.settings = settings
         self.stop_event = stop_event
+        self.live_state = live_state
         self.model: YOLO | None = None
         self.capture: VideoCapture | None = None
         self.frame_count = 0
@@ -87,24 +93,43 @@ class Detector:
         )
         return results[0]
 
-    def annotate_frame(self, frame: np.ndarray, result: Any) -> np.ndarray:
+    def annotate_frame(
+        self,
+        frame: np.ndarray,
+        result: Any,
+        counts: dict[str, int],
+    ) -> np.ndarray:
         """Draw fence, boxes, track IDs, labels, and confidence scores."""
         self.event_runtime.draw(frame)
-        return draw_detections(frame, result)
+        draw_detections(frame, result)
+        return draw_counts_overlay(frame, counts)
 
-    def log_new_tracks(self, result: Any) -> None:
-        """Log each track ID the first time it appears."""
-        if result.boxes is None:
-            return
-
-        for box in result.boxes:
-            track_id = get_track_id(box)
-            if track_id is None or track_id in self.seen_track_ids:
+    def handle_new_tracks(self, detections: list[Any]) -> None:
+        """Store a quiet event each time a new track ID appears."""
+        for detection in detections:
+            if detection.track_id in self.seen_track_ids:
                 continue
 
-            class_id = int(box.cls[0])
-            LOGGER.info("New track: %s #%s", result.names[class_id], track_id)
-            self.seen_track_ids.add(track_id)
+            LOGGER.info("New track: %s #%s", detection.class_name, detection.track_id)
+            event = build_new_object_event(self.settings.camera_id, detection)
+            try:
+                insert_event(event, self.settings.database_path)
+            except (sqlite3.Error, OSError) as exc:
+                LOGGER.error("Failed to store event %s: %s", event["event_id"], exc)
+            self.seen_track_ids.add(detection.track_id)
+
+    def count_active_objects(self, detections: list[Any]) -> dict[str, int]:
+        """Count currently tracked objects by event-facing object group."""
+        track_ids_by_type = {"person": set(), "vehicle": set(), "animal": set()}
+        for detection in detections:
+            object_type = detection.object_type
+            if object_type in track_ids_by_type:
+                track_ids_by_type[object_type].add(detection.track_id)
+
+        return {
+            object_type: len(track_ids)
+            for object_type, track_ids in track_ids_by_type.items()
+        }
 
     def log_fps(self) -> None:
         """Log average FPS every configured frame interval."""
@@ -129,11 +154,14 @@ class Detector:
                     break
 
                 result = self.run_inference(frame)
-                self.log_new_tracks(result)
                 detections = extract_tracked_detections(result)
+                self.handle_new_tracks(detections)
                 self.event_runtime.process(frame, detections)
+                counts = self.count_active_objects(detections)
+                annotated = self.annotate_frame(frame.copy(), result, counts)
+                if self.live_state is not None:
+                    self.live_state.update(annotated, counts)
                 if self.settings.display_enabled:
-                    annotated = self.annotate_frame(frame, result)
                     cv2.imshow(config.WINDOW_NAME, annotated)
                 self.log_fps()
 

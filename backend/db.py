@@ -27,10 +27,12 @@ def init_db(db_path: Path | None = None) -> None:
                 object_type TEXT NOT NULL,
                 track_id INTEGER NOT NULL,
                 confidence REAL NOT NULL,
-                evidence_path TEXT NOT NULL
+                evidence_path TEXT NOT NULL,
+                ack_status TEXT NOT NULL DEFAULT 'pending'
             )
             """
         )
+        _ensure_ack_status_column(connection)
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)"
         )
@@ -56,9 +58,10 @@ def insert_event(event: dict[str, Any], db_path: Path | None = None) -> None:
                 object_type,
                 track_id,
                 confidence,
-                evidence_path
+                evidence_path,
+                ack_status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event["event_id"],
@@ -69,6 +72,7 @@ def insert_event(event: dict[str, Any], db_path: Path | None = None) -> None:
                 event["track_id"],
                 event["confidence"],
                 event["evidence_path"],
+                event.get("ack_status", "pending"),
             ),
         )
 
@@ -119,6 +123,42 @@ def get_event(event_id: str, db_path: Path | None = None) -> dict[str, Any] | No
     if not rows:
         return None
     return rows[0]
+
+
+def update_event_ack(
+    event_id: str,
+    ack_status: str,
+    db_path: Path | None = None,
+) -> dict[str, Any] | None:
+    """Update an event acknowledgement status and return the updated event."""
+    path = _resolve_db_path(db_path)
+    with _DB_LOCK, sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+        cursor = connection.execute(
+            "UPDATE events SET ack_status = ? WHERE event_id = ?",
+            (ack_status, event_id),
+        )
+        if cursor.rowcount == 0:
+            return None
+        row = connection.execute(
+            "SELECT * FROM events WHERE event_id = ?",
+            (event_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def _ensure_ack_status_column(connection: sqlite3.Connection) -> None:
+    """Add ack_status to existing Phase 4 databases."""
+    columns = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(events)").fetchall()
+    }
+    if "ack_status" not in columns:
+        connection.execute(
+            "ALTER TABLE events ADD COLUMN ack_status TEXT NOT NULL DEFAULT 'pending'"
+        )
 
 
 def _fetch_all(

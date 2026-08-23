@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 from backend import config
-from backend.events import Fence
+from backend.events import Fence, RestrictedZone
 
 
 def draw_detections(frame: np.ndarray, result: Any) -> np.ndarray:
@@ -40,6 +40,64 @@ def draw_fence(frame: np.ndarray, fence: Fence) -> np.ndarray:
     start = (int(fence.start[0]), int(fence.start[1]))
     end = (int(fence.end[0]), int(fence.end[1]))
     cv2.line(frame, start, end, config.FENCE_COLOR, config.FENCE_THICKNESS)
+    return frame
+
+
+def draw_restricted_zone(frame: np.ndarray, zone: RestrictedZone) -> np.ndarray:
+    """Draw a semi-transparent restricted zone polygon on a frame."""
+    points = np.array(
+        [[(int(point[0]), int(point[1])) for point in zone.points]],
+        dtype=np.int32,
+    )
+    overlay = frame.copy()
+    cv2.fillPoly(overlay, points, config.ZONE_COLOR)
+    cv2.addWeighted(
+        overlay,
+        config.ZONE_FILL_ALPHA,
+        frame,
+        1 - config.ZONE_FILL_ALPHA,
+        0,
+        frame,
+    )
+    cv2.polylines(frame, points, True, config.ZONE_COLOR, config.FENCE_THICKNESS)
+    return frame
+
+
+def draw_counts_overlay(frame: np.ndarray, counts: dict[str, int]) -> np.ndarray:
+    """Draw current tracked object counts on the frame."""
+    text = (
+        f"Person: {counts.get('person', 0)}  "
+        f"Vehicle: {counts.get('vehicle', 0)}  "
+        f"Animal: {counts.get('animal', 0)}"
+    )
+    size, baseline = cv2.getTextSize(
+        text,
+        config.TEXT_FONT,
+        config.TEXT_SCALE,
+        config.TEXT_THICKNESS,
+    )
+    text_width, text_height = size
+    x = config.TEXT_PADDING
+    y = config.TEXT_PADDING + text_height
+    cv2.rectangle(
+        frame,
+        (0, 0),
+        (
+            text_width + config.TEXT_PADDING * 2,
+            text_height + baseline + config.TEXT_PADDING * 2,
+        ),
+        (16, 24, 32),
+        cv2.FILLED,
+    )
+    cv2.putText(
+        frame,
+        text,
+        (x, y),
+        config.TEXT_FONT,
+        config.TEXT_SCALE,
+        config.TEXT_COLOR,
+        config.TEXT_THICKNESS,
+    )
     return frame
 
 

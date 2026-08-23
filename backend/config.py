@@ -12,13 +12,15 @@ ENV_FILE = PROJECT_ROOT / ".env"
 
 DEFAULT_MODEL_PATH = "yolov8n.pt"
 DEFAULT_CONFIDENCE_THRESHOLD = 0.35
-DEFAULT_CLASS_FILTER = (0, 2, 3, 5, 7)
+DEFAULT_CLASS_FILTER = (0, 2, 3, 5, 7, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
 DEFAULT_VIDEO_SOURCE = "0"
 DEFAULT_FRAME_LOG_INTERVAL = 30
 DEFAULT_TRACKER_TYPE = "bytetrack.yaml"
 DEFAULT_CAMERA_ID = "cam_01"
+DEFAULT_LOCATION_LABEL = "BOP West Gate - Camera 1"
 DEFAULT_FENCE_START = (0.0, 0.5)
 DEFAULT_FENCE_END = (1.0, 0.5)
+DEFAULT_RESTRICTED_ZONE = ((0.62, 0.18), (0.95, 0.18), (0.95, 0.82), (0.62, 0.82))
 DEFAULT_EVENT_COOLDOWN_SECONDS = 4.0
 DEFAULT_EVIDENCE_DIR = PROJECT_ROOT / "evidence"
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "ibvap.db"
@@ -32,6 +34,8 @@ TEXT_BACKGROUND_COLOR = (0, 128, 0)
 BOX_THICKNESS = 2
 FENCE_COLOR = (0, 0, 255)
 FENCE_THICKNESS = 2
+ZONE_COLOR = (0, 180, 255)
+ZONE_FILL_ALPHA = 0.24
 TEXT_FONT = 0
 TEXT_SCALE = 0.6
 TEXT_THICKNESS = 2
@@ -64,6 +68,18 @@ def _parse_point(raw_value: str) -> tuple[float, float]:
     return (float(parts[0]), float(parts[1]))
 
 
+def _parse_polygon(raw_value: str) -> tuple[tuple[float, float], ...]:
+    """Parse semicolon-separated x,y points from configuration."""
+    points = tuple(
+        _parse_point(point.strip())
+        for point in raw_value.split(";")
+        if point.strip()
+    )
+    if len(points) < 3:
+        raise ValueError(f"Expected polygon with at least 3 points, got: {raw_value}")
+    return points
+
+
 def _parse_project_path(raw_value: str) -> Path:
     """Parse a path, resolving relative paths from the project root."""
     path = Path(raw_value)
@@ -83,8 +99,10 @@ class Settings:
     frame_log_interval: int
     tracker_type: str
     camera_id: str
+    location_label: str
     fence_start: tuple[float, float]
     fence_end: tuple[float, float]
+    restricted_zone: tuple[tuple[float, float], ...]
     event_cooldown_seconds: float
     evidence_dir: Path
     database_path: Path
@@ -112,6 +130,7 @@ def get_settings() -> Settings:
         ),
         tracker_type=os.getenv("IBVAP_TRACKER_TYPE", DEFAULT_TRACKER_TYPE),
         camera_id=os.getenv("IBVAP_CAMERA_ID", DEFAULT_CAMERA_ID),
+        location_label=os.getenv("IBVAP_LOCATION_LABEL", DEFAULT_LOCATION_LABEL),
         fence_start=_parse_point(
             os.getenv(
                 "IBVAP_FENCE_START",
@@ -122,6 +141,15 @@ def get_settings() -> Settings:
             os.getenv(
                 "IBVAP_FENCE_END",
                 ",".join(str(value) for value in DEFAULT_FENCE_END),
+            )
+        ),
+        restricted_zone=_parse_polygon(
+            os.getenv(
+                "IBVAP_RESTRICTED_ZONE",
+                ";".join(
+                    ",".join(str(value) for value in point)
+                    for point in DEFAULT_RESTRICTED_ZONE
+                ),
             )
         ),
         event_cooldown_seconds=float(
