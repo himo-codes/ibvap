@@ -446,6 +446,6 @@ COCO class IDs enabled by default:
 ## Team / Hackathon Credit
 
 - Team name: `Clanaura `
-- Institution: `<fill in institution>`
+- Institution: `Rungta International Skills University`
 - Smart India Hackathon problem statement ID: `SIH 26187`
 - Project: `IBVAP - Intelligent Border Video Analytics Platform`
