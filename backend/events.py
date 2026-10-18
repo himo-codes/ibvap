@@ -8,7 +8,6 @@ from pathlib import Path
 from time import monotonic
 from uuid import uuid4
 
-
 Point = tuple[float, float]
 BBox = tuple[int, int, int, int]
 PERSON_CLASS_NAMES = {"person"}
