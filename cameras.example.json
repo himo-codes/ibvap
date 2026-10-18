@@ -1,0 +1,40 @@
+{
+  "cameras": [
+    {
+      "camera_id": "cam_01",
+      "location": "BOP West Gate",
+      "source": "http://192.168.43.5:8080/video",
+      "loop": false,
+      "inference_stride": 2,
+      "target_width": 640,
+      "fence": { "start": [0.0, 0.5], "end": [1.0, 0.5], "alert_direction": "ANY" },
+      "zone": [[0.62, 0.18], [0.95, 0.18], [0.95, 0.82], [0.62, 0.82]],
+      "loiter_seconds": 10,
+      "analytics": { "loitering": true, "health": true, "night": false, "trails": true, "clips": false, "sequence": false }
+    },
+    {
+      "camera_id": "cam_02",
+      "location": "Perimeter North",
+      "source": "http://192.168.43.7:8080/video",
+      "loop": false,
+      "inference_stride": 2,
+      "target_width": 640,
+      "fence": { "start": [0.0, 0.6], "end": [1.0, 0.6], "alert_direction": "ANY" },
+      "zone": [],
+      "loiter_seconds": 10,
+      "analytics": { "loitering": false, "health": true, "night": false, "trails": true, "clips": false, "sequence": false }
+    },
+    {
+      "camera_id": "cam_03",
+      "location": "Service Route (recorded clip)",
+      "source": "sample_data/clip1.mp4",
+      "loop": true,
+      "inference_stride": 2,
+      "target_width": 640,
+      "fence": { "start": [0.0, 0.5], "end": [1.0, 0.5], "alert_direction": "ANY" },
+      "zone": [],
+      "loiter_seconds": 10,
+      "analytics": { "loitering": false, "health": false, "night": false, "trails": true, "clips": false, "sequence": false }
+    }
+  ]
+}
