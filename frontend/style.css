@@ -776,15 +776,12 @@ button:disabled {
   margin: 0;
 }
 
- feat/ui-grid
 /* Responsiveness */
 @media (max-width: 768px) {
-
   .controls-actions {
     flex-wrap: wrap;
   }
 
- main
   .topbar {
     padding: 16px;
     flex-direction: column;
